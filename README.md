@@ -30,6 +30,14 @@ pip install flask pillow pypdf
 
 ## 快速开始
 
+一键启动（首次会自动安装依赖）：
+
+```bash
+./start.sh
+```
+
+或手动启动：
+
 ```bash
 # 可选：指定打印机地址
 export PRINTER_HOST=172.166.162.20
