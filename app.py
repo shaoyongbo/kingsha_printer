@@ -8,13 +8,15 @@ import io
 import logging
 import os
 import re
+import secrets
 import struct
 import time
 import urllib.error
 import urllib.request
+from functools import wraps
 
-from flask import Flask, jsonify, render_template, request
-from PIL import Image, ImageOps
+from flask import Flask, Response, jsonify, render_template, request, session
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 
 try:
     from pypdf import PdfReader
@@ -65,6 +67,76 @@ PAPER_MEDIA = {"a4": "iso_a4_210x297mm", "a3": "iso_a3_297x420mm"}
 
 app = Flask(__name__)
 app.config["MAX_CONTENT_LENGTH"] = MAX_UPLOAD
+
+
+def _load_secret_key():
+    path = os.path.join(BASE_DIR, ".secret_key")
+    try:
+        with open(path, encoding="utf-8") as fh:
+            key = fh.read().strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_hex(32)
+    try:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(key)
+    except OSError:
+        pass
+    return key
+
+
+app.secret_key = os.environ.get("SECRET_KEY") or _load_secret_key()
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax")
+
+ADMIN_USER = os.environ.get("ADMIN_USER", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "admin")
+CAPTCHA_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
+CAPTCHA_TTL = 300  # 验证码有效期（秒）
+
+
+def login_required(view):
+    @wraps(view)
+    def wrapper(*args, **kwargs):
+        if session.get("user") != ADMIN_USER:
+            return jsonify({"ok": False, "error": "请先登录", "needLogin": True}), 401
+        return view(*args, **kwargs)
+
+    return wrapper
+
+
+def captcha_image(code):
+    width, height = 132, 44
+    image = Image.new("RGB", (width, height), "#f7f9fc")
+    draw = ImageDraw.Draw(image)
+    try:
+        font = ImageFont.truetype(FONT_PATH, 28, index=0)
+    except OSError:
+        font = ImageFont.load_default()
+    for _ in range(4):
+        draw.line(
+            (
+                secrets.randbelow(width),
+                secrets.randbelow(height),
+                secrets.randbelow(width),
+                secrets.randbelow(height),
+            ),
+            fill=tuple(secrets.randbelow(120) + 100 for _ in range(3)),
+            width=1,
+        )
+    step = width // (len(code) + 1)
+    for index, char in enumerate(code):
+        color = tuple(secrets.randbelow(80) + 30 for _ in range(3))
+        x = step * (index + 1) - 11 + secrets.randbelow(6)
+        y = secrets.randbelow(6) - 2
+        draw.text((x, y), char, font=font, fill=color)
+    for _ in range(50):
+        gray = secrets.randbelow(140) + 90
+        draw.point((secrets.randbelow(width), secrets.randbelow(height)), fill=(gray, gray, gray))
+    buffer = io.BytesIO()
+    image.save(buffer, "PNG")
+    return buffer.getvalue()
 
 # 任务元数据（总页数、份数等），用于前端展示打印进度
 JOB_CACHE = {}
@@ -633,7 +705,54 @@ def index():
     )
 
 
+@app.get("/api/me")
+def api_me():
+    if session.get("user") == ADMIN_USER:
+        return jsonify({"ok": True, "user": ADMIN_USER})
+    return jsonify({"ok": False, "error": "请先登录", "needLogin": True}), 401
+
+
+@app.get("/api/captcha")
+def api_captcha():
+    code = "".join(secrets.choice(CAPTCHA_CHARS) for _ in range(4))
+    session["captcha"] = code
+    session["captcha_at"] = time.time()
+    return Response(
+        captcha_image(code),
+        mimetype="image/png",
+        headers={"Cache-Control": "no-store, max-age=0"},
+    )
+
+
+@app.post("/api/login")
+def api_login():
+    data = request.get_json(silent=True) or {}
+    username = str(data.get("username") or "").strip()
+    password = str(data.get("password") or "")
+    captcha = str(data.get("captcha") or "").strip().upper()
+    expected = session.pop("captcha", None)
+    issued_at = session.pop("captcha_at", 0)
+    if not expected or time.time() - issued_at > CAPTCHA_TTL:
+        return jsonify({"ok": False, "error": "验证码已过期，请刷新后重试"}), 400
+    if not secrets.compare_digest(captcha, expected.upper()):
+        return jsonify({"ok": False, "error": "验证码错误"}), 400
+    if not (
+        secrets.compare_digest(username.encode("utf-8"), ADMIN_USER.encode("utf-8"))
+        and secrets.compare_digest(password.encode("utf-8"), ADMIN_PASSWORD.encode("utf-8"))
+    ):
+        return jsonify({"ok": False, "error": "用户名或密码错误"}), 401
+    session["user"] = ADMIN_USER
+    return jsonify({"ok": True, "user": ADMIN_USER})
+
+
+@app.post("/api/logout")
+def api_logout():
+    session.clear()
+    return jsonify({"ok": True})
+
+
 @app.get("/api/status")
+@login_required
 def api_status():
     try:
         return jsonify({"ok": True, **get_printer_status()})
@@ -647,6 +766,7 @@ def api_status():
 
 
 @app.get("/api/jobs/<int:job_id>")
+@login_required
 def api_job(job_id):
     try:
         return jsonify({"ok": True, **get_job_status(job_id)})
@@ -659,6 +779,7 @@ def api_job(job_id):
 
 
 @app.post("/api/print")
+@login_required
 def api_print():
     upload = request.files.get("file")
     if upload is None or not upload.filename:
