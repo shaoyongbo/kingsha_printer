@@ -5,7 +5,9 @@
 """
 
 import io
+import logging
 import os
+import re
 import struct
 import time
 import urllib.error
@@ -19,14 +21,46 @@ try:
 except ImportError:  # pragma: no cover
     PdfReader = None
 
+try:
+    import mammoth
+except ImportError:  # pragma: no cover
+    mammoth = None
+
+try:
+    from xhtml2pdf import pisa
+    from xhtml2pdf.config.resources import ResourceAccessPolicy
+except ImportError:  # pragma: no cover
+    pisa = None
+    ResourceAccessPolicy = None
+
+logging.getLogger("xhtml2pdf").setLevel(logging.ERROR)
+
 PRINTER_HOST = os.environ.get("PRINTER_HOST", "172.166.162.20")
 PRINTER_PORT = int(os.environ.get("PRINTER_PORT", "631"))
 PRINTER_PATH = os.environ.get("PRINTER_PATH", "/ipp/print")
 PRINTER_URI = f"ipp://{PRINTER_HOST}:{PRINTER_PORT}{PRINTER_PATH}"
 HTTP_URI = f"http://{PRINTER_HOST}:{PRINTER_PORT}{PRINTER_PATH}"
 
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+FONT_PATH = os.path.join(BASE_DIR, "assets", "wqy-microhei.ttc")
+
 MAX_UPLOAD = 200 * 1024 * 1024  # 200 MB
-ALLOWED_EXTS = {"pdf", "jpg", "jpeg", "png"}
+ALLOWED_EXTS = {"pdf", "jpg", "jpeg", "png", "docx", "html", "htm"}
+
+# 上传文档转 PDF 时允许读取的资源：仅本地 assets 目录（中文字体）和公网图片
+DOC_RESOURCE_POLICY = None
+if ResourceAccessPolicy is not None:
+    DOC_RESOURCE_POLICY = ResourceAccessPolicy(
+        allow_remote=True,
+        allow_private_networks=False,
+        base_dir=os.path.join(BASE_DIR, "assets"),
+        max_render_seconds=90,
+        max_resource_bytes=25 * 1024 * 1024,
+        max_local_bytes=25 * 1024 * 1024,
+        max_image_pixels=60_000_000,
+        max_resources=100,
+        max_total_bytes=150 * 1024 * 1024,
+    )
 PAPER_MEDIA = {"a4": "iso_a4_210x297mm", "a3": "iso_a3_297x420mm"}
 
 app = Flask(__name__)
@@ -481,6 +515,94 @@ def image_to_pdf(raw, paper="a4"):
     return buf.getvalue()
 
 
+def _doc_css(paper="a4"):
+    size = "A3" if paper == "a3" else "A4"
+    return f"""<style>
+@font-face {{ font-family: "WQY"; src: url("file://{FONT_PATH}"); }}
+@page {{ size: {size}; margin: 18mm 16mm; }}
+body {{ font-family: "WQY"; font-size: 11pt; line-height: 1.55; color: #111; }}
+h1 {{ font-size: 18pt; }}
+h2 {{ font-size: 15pt; }}
+h3 {{ font-size: 13pt; }}
+p {{ margin: 0 0 6pt; }}
+table {{ margin: 6pt 0; }}
+td, th {{ border: 1px solid #999; padding: 4pt; vertical-align: top; }}
+th {{ background: #f2f4f7; }}
+img {{ max-width: 100%; }}
+ul, ol {{ margin: 0 0 6pt 18pt; }}
+blockquote {{ margin: 0 0 6pt 12pt; padding-left: 8pt; border-left: 3px solid #ccc; color: #444; }}
+pre {{ font-family: "WQY"; font-size: 9.5pt; white-space: pre-wrap; }}
+</style>"""
+
+
+def _render_pdf(html):
+    if pisa is None:
+        raise ValueError("服务器缺少文档转换组件，请安装 xhtml2pdf")
+    out = io.BytesIO()
+    try:
+        result = pisa.CreatePDF(
+            html,  # 直接传 str，避免按字节猜测编码导致中文乱码
+            dest=out,
+            resource_policy=DOC_RESOURCE_POLICY,
+        )
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"文档转换失败：{exc}") from exc
+    pdf = out.getvalue()
+    if result.err or not pdf.startswith(b"%PDF"):
+        raise ValueError("文档转换失败，请检查文件内容是否完整")
+    return pdf
+
+
+_HTML_DROP_BLOCK = re.compile(
+    r"<(script|iframe|object|embed|noscript)\b[^>]*>.*?</\1\s*>",
+    re.IGNORECASE | re.DOTALL,
+)
+_HTML_DROP_TAG = re.compile(r"<(link|base)\b[^>]*>", re.IGNORECASE)
+
+
+def html_to_pdf(raw, paper="a4"):
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        try:
+            text = raw.decode("gb18030")
+        except UnicodeDecodeError:
+            text = raw.decode("utf-8", errors="replace")
+    # 去掉脚本、外部样式和外链基址，避免执行或加载非文档内容
+    text = _HTML_DROP_BLOCK.sub("", text)
+    text = _HTML_DROP_TAG.sub("", text)
+    css = _doc_css(paper)
+    low = text.lower()
+    if "</head>" in low:
+        index = low.index("</head>")
+        text = text[:index] + css + text[index:]
+    elif "<html" in low:
+        index = low.find(">", low.index("<html"))
+        text = text[: index + 1] + "<head>" + css + "</head>" + text[index + 1 :]
+    else:
+        text = (
+            '<!DOCTYPE html><html><head><meta charset="utf-8">'
+            f"{css}</head><body>{text}</body></html>"
+        )
+    return _render_pdf(text)
+
+
+def docx_to_pdf(raw, paper="a4"):
+    if mammoth is None:
+        raise ValueError("服务器缺少 Word 转换组件，请安装 mammoth")
+    try:
+        body = mammoth.convert_to_html(io.BytesIO(raw)).value
+    except Exception as exc:  # noqa: BLE001
+        raise ValueError(f"Word 文档解析失败：{exc}") from exc
+    if not body.strip():
+        raise ValueError("Word 文档没有可打印的内容")
+    html = (
+        '<!DOCTYPE html><html><head><meta charset="utf-8">'
+        f"{_doc_css(paper)}</head><body>{body}</body></html>"
+    )
+    return _render_pdf(html)
+
+
 def prepare_document(filename, raw, paper="a4"):
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext == "pdf":
@@ -492,7 +614,13 @@ def prepare_document(filename, raw, paper="a4"):
             return image_to_pdf(raw, paper), "application/pdf"
         except Exception as exc:  # noqa: BLE001
             raise ValueError(f"图片解析失败：{exc}") from exc
-    raise ValueError("仅支持 PDF、JPG、PNG 文件")
+    if ext in ("html", "htm"):
+        return html_to_pdf(raw, paper), "application/pdf"
+    if ext == "docx":
+        return docx_to_pdf(raw, paper), "application/pdf"
+    if ext == "doc":
+        raise ValueError("暂不支持旧版 .doc，请用 Word 另存为 .docx 后再打印")
+    raise ValueError("仅支持 PDF、Word (.docx)、HTML、JPG、PNG 文件")
 
 
 # ---------------------------------------------------------------- 路由
@@ -539,7 +667,17 @@ def api_print():
     filename = os.path.basename(upload.filename).strip() or "document"
     ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
     if ext not in ALLOWED_EXTS:
-        return jsonify({"ok": False, "error": "仅支持 PDF、JPG、PNG 文件"}), 400
+        if ext == "doc":
+            return (
+                jsonify(
+                    {"ok": False, "error": "暂不支持旧版 .doc，请用 Word 另存为 .docx 后再打印"}
+                ),
+                400,
+            )
+        return (
+            jsonify({"ok": False, "error": "仅支持 PDF、Word (.docx)、HTML、JPG、PNG 文件"}),
+            400,
+        )
 
     color_mode = request.form.get("colorMode", "color")
     if color_mode not in ("color", "monochrome"):

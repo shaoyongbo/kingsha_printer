@@ -189,6 +189,8 @@
     color: #fff; background: linear-gradient(145deg, #60a5fa, #2563eb);
   }
   .file-badge.img { background: linear-gradient(145deg, #f59e0b, #ea580c); }
+  .file-badge.doc { background: linear-gradient(145deg, #5b8def, #2b579a); }
+  .file-badge.html { background: linear-gradient(145deg, #a78bfa, #7c3aed); }
   .file-meta { min-width: 0; flex: 1; }
   .file-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .file-size { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
@@ -402,17 +404,17 @@
       <div class="step-head">
         <span class="step-no">01</span>
         <h2>选择文件</h2>
-        <span class="hint">支持 PDF / JPG / PNG，最大 200MB</span>
+        <span class="hint">支持 PDF / Word / HTML / 图片，最大 200MB</span>
       </div>
       <div class="dropzone" id="dropzone" role="button" tabindex="0">
-        <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" hidden>
+        <input type="file" id="fileInput" accept=".pdf,.docx,.html,.htm,.jpg,.jpeg,.png" hidden>
         <div class="dz-icon">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
           </svg>
         </div>
         <p class="dz-title">点击选择或拖拽文件到此处</p>
-        <p class="dz-sub">上传后将按 A4 纸张和所选单双面输出</p>
+        <p class="dz-sub">上传后将按所选纸张、面数和缩放方式输出</p>
       </div>
       <div class="file-card" id="fileCard" hidden>
         <div class="file-badge" id="fileBadge">PDF</div>
@@ -479,7 +481,7 @@
         </div>
       </div>
       <p class="option-note" id="paperNote" hidden>A3 打印前请确认纸盘已装入 A3 纸张。</p>
-      <p class="option-note" id="scalingNote" hidden>原始大小不对 PDF 缩放，超出纸张的内容可能被裁切；图片仍会适配页面。</p>
+      <p class="option-note" id="scalingNote" hidden>原始大小不缩放 PDF（Word / HTML 会先转换为 PDF），超出纸张的内容可能被裁切；图片仍会适配页面。</p>
     </section>
 
     <button class="print-btn" id="printBtn" disabled>
@@ -506,7 +508,7 @@
 <script>
   const $ = (id) => document.getElementById(id);
   const MAX_SIZE = 200 * 1024 * 1024;
-  const ALLOWED = ["pdf", "jpg", "jpeg", "png"];
+  const ALLOWED = ["pdf", "docx", "html", "htm", "jpg", "jpeg", "png"];
   const MEDIA_TEXT = {
     "iso_a4_210x297mm": "A4",
     "iso_a3_297x420mm": "A3",
@@ -667,7 +669,7 @@
     if (!file) return;
     const ext = extOf(file.name);
     if (!ALLOWED.includes(ext)) {
-      showResult(false, "不支持的文件格式", "仅支持 PDF、JPG、PNG 文件。");
+      showResult(false, "不支持的文件格式", "仅支持 PDF、Word (.docx)、HTML、JPG、PNG 文件。");
       return;
     }
     if (file.size > MAX_SIZE) {
@@ -678,8 +680,15 @@
     $("fileName").textContent = file.name;
     $("fileSize").textContent = fmtSize(file.size);
     const badge = $("fileBadge");
-    badge.textContent = ext === "pdf" ? "PDF" : ext.toUpperCase().replace("JPEG", "JPG");
-    badge.className = "file-badge" + (ext === "pdf" ? "" : " img");
+    const badgeKind =
+      ext === "pdf" ? "" :
+      ext === "docx" ? " doc" :
+      (ext === "html" || ext === "htm") ? " html" : " img";
+    badge.textContent =
+      ext === "pdf" ? "PDF" :
+      ext === "docx" ? "DOCX" :
+      (ext === "html" || ext === "htm") ? "HTML" : ext.toUpperCase().replace("JPEG", "JPG");
+    badge.className = "file-badge" + badgeKind;
     $("fileCard").hidden = false;
     $("dropzone").hidden = true;
     $("printBtn").disabled = false;

@@ -10,9 +10,9 @@ if ! command -v "$PY" >/dev/null 2>&1; then
   exit 1
 fi
 
-if ! "$PY" -c "import flask, PIL, pypdf" >/dev/null 2>&1; then
-  echo "首次运行，正在安装依赖：flask pillow pypdf ..."
-  "$PY" -m pip install --user flask pillow pypdf
+if ! "$PY" -c "import flask, PIL, pypdf, mammoth, xhtml2pdf" >/dev/null 2>&1; then
+  echo "首次运行，正在安装依赖：flask pillow pypdf mammoth xhtml2pdf ..."
+  "$PY" -m pip install --user flask pillow pypdf mammoth xhtml2pdf
 fi
 
 PORT="${PORT:-8090}"
