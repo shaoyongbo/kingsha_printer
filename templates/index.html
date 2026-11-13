@@ -1,0 +1,948 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>文件打印 · RICOH M C2001</title>
+<style>
+  :root {
+    --blue: #2563eb;
+    --blue-dark: #1d4ed8;
+    --ink: #0f172a;
+    --muted: #64748b;
+    --line: #e2e8f0;
+    --bg: #eef2f9;
+    --ok: #059669;
+    --warn: #d97706;
+    --err: #dc2626;
+    --radius: 16px;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    min-height: 100vh;
+    padding: 0 20px 40px;
+    background:
+      radial-gradient(900px 420px at 15% -10%, #dbeafe 0%, transparent 60%),
+      radial-gradient(700px 360px at 100% 0%, #ede9fe 0%, transparent 55%),
+      linear-gradient(180deg, #f2f5fb 0%, #f8fafc 100%);
+    color: var(--ink);
+    font-family: "PingFang SC", "Microsoft YaHei", "Noto Sans SC", system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { width: 100%; max-width: 780px; margin: 0 auto; }
+
+  /* 顶部 */
+  .topbar {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 16px; padding: 30px 2px 22px;
+  }
+  .brand { display: flex; align-items: center; gap: 14px; min-width: 0; }
+  .logo {
+    width: 46px; height: 46px; flex: 0 0 46px; border-radius: 14px;
+    display: grid; place-items: center; color: #fff;
+    background: linear-gradient(145deg, #3b82f6, #1d4ed8);
+    box-shadow: 0 8px 20px rgba(37, 99, 235, .32);
+  }
+  .logo svg { width: 24px; height: 24px; }
+  h1 { margin: 0; font-size: 21px; font-weight: 700; letter-spacing: .2px; }
+  .sub { margin: 4px 0 0; font-size: 12.5px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  .status-area { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; }
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px;
+    height: 32px; padding: 0 12px; border-radius: 999px;
+    font-size: 12.5px; font-weight: 600; white-space: nowrap;
+    border: 1px solid #e2e8f0; background: #fff; color: var(--muted);
+  }
+  .pill .dot { width: 7px; height: 7px; border-radius: 50%; background: #94a3b8; }
+  .pill.ok { color: #047857; background: #ecfdf5; border-color: #a7f3d0; }
+  .pill.ok .dot { background: #10b981; }
+  .pill.busy { color: #1d4ed8; background: #eff6ff; border-color: #bfdbfe; }
+  .pill.busy .dot { background: #3b82f6; animation: pulse 1.4s infinite; }
+  .pill.error { color: #b91c1c; background: #fef2f2; border-color: #fecaca; }
+  .pill.error .dot { background: #ef4444; }
+  @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: .25; } }
+
+  .icon-btn {
+    width: 32px; height: 32px; border-radius: 10px; border: 1px solid var(--line);
+    background: #fff; color: var(--muted); cursor: pointer; display: grid; place-items: center;
+  }
+  .icon-btn:hover { color: var(--blue); border-color: #bfdbfe; }
+  .icon-btn svg { width: 16px; height: 16px; }
+  .icon-btn.spin svg { animation: spin .8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* 提示条 */
+  .alert {
+    display: flex; gap: 10px; align-items: flex-start;
+    padding: 12px 14px; margin-bottom: 14px; border-radius: 12px;
+    font-size: 13px; line-height: 1.55;
+    border: 1px solid #fcd34d; background: #fffbeb; color: #92400e;
+  }
+  .alert.error { border-color: #fecaca; background: #fef2f2; color: #991b1b; }
+  .alert svg { width: 17px; height: 17px; flex: 0 0 17px; margin-top: 1px; }
+  .alert strong { font-weight: 700; }
+  .alert .detail { color: inherit; opacity: .82; }
+
+  /* 打印机状态卡片 */
+  .printer-card {
+    background: #fff; border: 1px solid #e6ebf5; border-radius: 18px;
+    padding: 18px 20px; margin-bottom: 16px;
+    box-shadow: 0 12px 32px rgba(15, 23, 42, .05);
+  }
+  .printer-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+  .printer-title { display: flex; align-items: center; gap: 8px; font-size: 14px; font-weight: 700; min-width: 0; }
+  .printer-title svg { width: 17px; height: 17px; flex: 0 0 17px; color: var(--blue); }
+  .printer-name {
+    font-size: 11.5px; font-weight: 400; color: var(--muted); margin-left: 4px;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .status-badge {
+    display: inline-flex; align-items: center; gap: 6px; height: 26px; padding: 0 10px;
+    border-radius: 999px; font-size: 12px; font-weight: 700; white-space: nowrap;
+    background: #f1f5f9; color: #475569;
+  }
+  .status-badge.ok { background: #ecfdf5; color: #047857; }
+  .status-badge.busy { background: #eff6ff; color: #1d4ed8; }
+  .status-badge.error { background: #fef2f2; color: #b91c1c; }
+  .status-badge .dot { width: 7px; height: 7px; border-radius: 50%; background: currentColor; }
+  .status-badge.busy .dot { animation: pulse 1.4s infinite; }
+
+  .printer-grid {
+    display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px; margin-top: 14px;
+  }
+  .printer-item {
+    min-width: 0; padding: 9px 12px; border-radius: 10px;
+    background: #f8fafc; border: 1px solid #eef2f7;
+  }
+  .printer-item .k { font-size: 11px; color: var(--muted); }
+  .printer-item .v {
+    margin-top: 3px; font-size: 12.5px; font-weight: 600;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .supply-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; margin-top: 12px; }
+  .supply { min-width: 0; }
+  .supply-head { display: flex; justify-content: space-between; gap: 6px; font-size: 11px; color: var(--muted); }
+  .supply-head b { color: var(--ink); font-weight: 700; }
+  .supply-track { height: 6px; margin-top: 5px; border-radius: 999px; background: #eef2f7; overflow: hidden; }
+  .supply-fill { height: 100%; border-radius: inherit; transition: width .4s ease; }
+
+  .tray-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 12px; }
+  .tray {
+    flex: 1 1 210px; min-width: 0; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 8px 12px; border: 1px solid #eef2f7; border-radius: 10px; background: #fff;
+  }
+  .tray-main { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+  .tray-name { font-size: 12.5px; font-weight: 700; }
+  .tray-meta {
+    font-size: 11px; color: var(--muted);
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .tray-state { flex: 0 0 auto; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 700; }
+  .tray-state.ok { color: #047857; background: #ecfdf5; }
+  .tray-state.warn { color: #b45309; background: #fffbeb; }
+  .tray-state.bad { color: #b91c1c; background: #fef2f2; }
+
+  /* 主卡片 */
+  .card {
+    background: #fff; border: 1px solid #e6ebf5; border-radius: 22px;
+    box-shadow: 0 22px 60px rgba(15, 23, 42, .07);
+    padding: 26px;
+  }
+  .step + .step { margin-top: 26px; padding-top: 24px; border-top: 1px dashed #e8edf5; }
+  .step-head { display: flex; align-items: baseline; gap: 9px; margin-bottom: 14px; flex-wrap: wrap; }
+  .step-no {
+    font-size: 11px; font-weight: 700; letter-spacing: .08em; color: var(--blue);
+    background: #eff6ff; border-radius: 6px; padding: 3px 7px;
+  }
+  h2 { margin: 0; font-size: 15px; font-weight: 700; }
+  .hint { margin-left: auto; font-size: 12px; color: var(--muted); }
+
+  /* 上传区 */
+  .dropzone {
+    position: relative; border: 1.5px dashed #c7d2e3; border-radius: var(--radius);
+    background: #fbfdff; padding: 34px 20px; text-align: center;
+    cursor: pointer; transition: border-color .15s, background .15s, transform .15s;
+  }
+  .dropzone:hover, .dropzone.drag { border-color: var(--blue); background: #f5f9ff; }
+  .dropzone.drag { transform: scale(1.004); }
+  .dropzone:focus-visible { outline: 2px solid #93c5fd; outline-offset: 2px; }
+  .dz-icon {
+    width: 46px; height: 46px; margin: 0 auto 12px; border-radius: 14px;
+    display: grid; place-items: center; color: var(--blue); background: #eef4ff;
+  }
+  .dz-icon svg { width: 23px; height: 23px; }
+  .dz-title { margin: 0; font-size: 14.5px; font-weight: 600; }
+  .dz-sub { margin: 6px 0 0; font-size: 12px; color: var(--muted); }
+
+  .file-card {
+    display: flex; align-items: center; gap: 12px;
+    padding: 12px 14px; margin-top: 12px;
+    border: 1px solid #dbeafe; background: #f8fbff; border-radius: 12px;
+  }
+  .file-badge {
+    width: 40px; height: 40px; flex: 0 0 40px; border-radius: 10px;
+    display: grid; place-items: center; font-size: 10.5px; font-weight: 800; letter-spacing: .04em;
+    color: #fff; background: linear-gradient(145deg, #60a5fa, #2563eb);
+  }
+  .file-badge.img { background: linear-gradient(145deg, #f59e0b, #ea580c); }
+  .file-meta { min-width: 0; flex: 1; }
+  .file-name { font-size: 13.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .file-size { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+  .remove-btn {
+    width: 30px; height: 30px; border-radius: 9px; border: none; background: transparent;
+    color: #94a3b8; cursor: pointer; display: grid; place-items: center;
+  }
+  .remove-btn:hover { background: #eef2f8; color: #ef4444; }
+  .remove-btn svg { width: 16px; height: 16px; }
+
+  /* 打印设置 */
+  .modes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+  .mode {
+    position: relative; display: flex; align-items: center; gap: 12px;
+    padding: 15px 14px; border: 1.5px solid var(--line); border-radius: 14px;
+    background: #fff; cursor: pointer; transition: border-color .15s, box-shadow .15s, background .15s;
+  }
+  .mode:hover { border-color: #bfdbfe; }
+  .mode input { position: absolute; opacity: 0; pointer-events: none; }
+  .mode:has(input:checked) {
+    border-color: var(--blue); background: #f5f9ff;
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, .1);
+  }
+  .swatch { width: 34px; height: 34px; flex: 0 0 34px; border-radius: 50%; position: relative; }
+  .swatch.color {
+    background: conic-gradient(#ef4444, #f59e0b, #84cc16, #06b6d4, #3b82f6, #a855f7, #ef4444);
+  }
+  .swatch.mono { background: linear-gradient(135deg, #111827 0%, #6b7280 100%); }
+  .mode-info { display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+  .mode-info strong { font-size: 14px; font-weight: 700; }
+  .mode-info small { font-size: 11.5px; color: var(--muted); }
+  .mode .check {
+    position: absolute; top: 9px; right: 9px; width: 18px; height: 18px; border-radius: 50%;
+    display: grid; place-items: center; color: #fff; background: var(--blue);
+    opacity: 0; transform: scale(.6); transition: opacity .15s, transform .15s;
+  }
+  .mode:has(input:checked) .check { opacity: 1; transform: scale(1); }
+  .mode .check svg { width: 11px; height: 11px; }
+
+  .options {
+    display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px;
+  }
+  .option {
+    flex: 1 1 160px; display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; padding: 11px 14px; border: 1px solid var(--line); border-radius: 12px;
+  }
+  .option-label { font-size: 13px; color: var(--muted); }
+  .option-note { margin: 10px 2px 0; font-size: 12px; color: var(--warn); }
+  .stepper { display: flex; align-items: center; gap: 2px; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+  .stepper button {
+    width: 32px; height: 30px; border: none; background: #f8fafc; color: #475569;
+    font-size: 17px; line-height: 1; cursor: pointer;
+  }
+  .stepper button:hover { background: #eff6ff; color: var(--blue); }
+  .stepper input {
+    width: 44px; height: 30px; border: none; border-left: 1px solid var(--line);
+    border-right: 1px solid var(--line); text-align: center; font-size: 13.5px; font-weight: 700;
+    color: var(--ink); background: #fff; outline: none; -moz-appearance: textfield;
+  }
+  .stepper input::-webkit-outer-spin-button,
+  .stepper input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
+
+  .segmented { display: flex; padding: 2px; background: #f1f5f9; border-radius: 9px; }
+  .segmented button {
+    border: none; background: transparent; color: var(--muted);
+    font-family: inherit; font-size: 12.5px; font-weight: 600;
+    padding: 6px 12px; border-radius: 7px; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s;
+  }
+  .segmented button:hover { color: var(--blue); }
+  .segmented button.active { background: #fff; color: var(--blue); box-shadow: 0 1px 3px rgba(15, 23, 42, .14); }
+
+  /* 提交按钮 */
+  .print-btn {
+    width: 100%; height: 54px; margin-top: 24px; border: none; border-radius: 14px;
+    display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+    color: #fff; font-size: 15.5px; font-weight: 700; font-family: inherit; letter-spacing: .02em;
+    background: linear-gradient(145deg, #3b82f6, #1d4ed8);
+    box-shadow: 0 12px 26px rgba(37, 99, 235, .28);
+    cursor: pointer; transition: transform .15s, box-shadow .15s, opacity .15s;
+  }
+  .print-btn:hover:not(:disabled) { transform: translateY(-1px); box-shadow: 0 16px 32px rgba(37, 99, 235, .34); }
+  .print-btn:active:not(:disabled) { transform: translateY(0); }
+  .print-btn:disabled { background: #cbd5e1; box-shadow: none; cursor: not-allowed; }
+  .spinner {
+    width: 17px; height: 17px; border-radius: 50%;
+    border: 2px solid rgba(255, 255, 255, .35); border-top-color: #fff;
+    animation: spin .7s linear infinite;
+  }
+
+  /* 结果 */
+  .upload-progress { margin-top: 14px; }
+  .upload-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 10px; margin-bottom: 6px; font-size: 12px; color: var(--muted);
+  }
+  .upload-head .pct { font-weight: 700; color: var(--ink); }
+
+  .result { margin-top: 18px; border-radius: 14px; padding: 15px 16px; font-size: 13px; line-height: 1.6; }
+  .result.success { background: #f0fdf4; border: 1px solid #bbf7d0; color: #166534; }
+  .result.failure { background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; }
+  .result-head { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 14px; }
+  .result-head svg { width: 17px; height: 17px; flex: 0 0 17px; }
+  .result-body { margin-top: 7px; }
+  .job-line { display: flex; align-items: center; gap: 7px; }
+  .live-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; animation: pulse 1.3s infinite; flex: 0 0 7px; }
+  .job-tag {
+    display: inline-block; padding: 1px 7px; border-radius: 5px;
+    background: rgba(22, 101, 52, .09); font-weight: 700; font-size: 12px;
+  }
+  .result.failure .job-tag { background: rgba(153, 27, 27, .08); }
+
+  /* 打印进度 */
+  .progress-block { margin-top: 12px; }
+  .progress-track {
+    position: relative; height: 8px; border-radius: 999px; overflow: hidden;
+    background: rgba(22, 101, 52, .13);
+  }
+  .progress-bar {
+    height: 100%; width: 0; border-radius: inherit;
+    background: linear-gradient(90deg, #34d399, #10b981);
+    transition: width .45s ease;
+  }
+  .progress-bar.indeterminate { width: 38%; animation: slide 1.3s ease-in-out infinite; }
+  .progress-bar.done { background: linear-gradient(90deg, #10b981, #059669); }
+  .progress-bar.error { background: linear-gradient(90deg, #f87171, #dc2626); }
+  @keyframes slide {
+    0% { transform: translateX(-110%); }
+    100% { transform: translateX(300%); }
+  }
+  .progress-meta {
+    display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+    margin-top: 7px; font-size: 12px; color: #15803d;
+  }
+  .progress-meta .pct { font-weight: 700; flex: 0 0 auto; }
+  .result.failure .progress-meta { color: #991b1b; }
+
+  /* 页脚 */
+  footer {
+    display: flex; flex-wrap: wrap; gap: 6px 16px; justify-content: center;
+    padding: 20px 4px 0; font-size: 11.5px; color: #94a3b8;
+  }
+  footer span { display: inline-flex; align-items: center; gap: 5px; }
+
+  @media (max-width: 620px) {
+    body { padding: 0 14px 28px; }
+    .topbar { padding: 20px 2px 16px; align-items: flex-start; }
+    .card { padding: 20px 16px; border-radius: 18px; }
+    .modes { grid-template-columns: 1fr; }
+    .printer-grid { grid-template-columns: 1fr 1fr; }
+    .supply-list { grid-template-columns: 1fr 1fr; }
+    .printer-card { padding: 16px; }
+    .hint { width: 100%; margin-left: 0; }
+    h1 { font-size: 19px; }
+    .pill { height: 30px; padding: 0 10px; font-size: 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="topbar">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>
+        </svg>
+      </div>
+      <div>
+        <h1>文件打印</h1>
+        <p class="sub">RICOH M C2001 · {{ printer_host }}</p>
+      </div>
+    </div>
+    <div class="status-area">
+      <div class="pill" id="statusPill"><span class="dot"></span><span id="statusText">连接中</span></div>
+      <button class="icon-btn" id="refreshBtn" title="刷新打印机状态" aria-label="刷新打印机状态">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v6h-6"/>
+        </svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="alert" id="printerAlert" hidden>
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4"/><path d="M12 17h.01"/>
+    </svg>
+    <div><strong id="alertTitle"></strong><div class="detail" id="alertDetail"></div></div>
+  </div>
+
+  <section class="printer-card">
+    <div class="printer-head">
+      <div class="printer-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M6 9V3h12v6"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8" rx="1"/>
+        </svg>
+        打印机状态
+        <span class="printer-name" id="cardName">RICOH M C2001</span>
+      </div>
+      <span class="status-badge" id="cardState"><span class="dot"></span><span id="cardStateText">连接中</span></span>
+    </div>
+    <div class="printer-grid">
+      <div class="printer-item"><div class="k">状态信息</div><div class="v" id="cardMessage">—</div></div>
+      <div class="printer-item"><div class="k">队列任务</div><div class="v" id="cardQueue">—</div></div>
+      <div class="printer-item"><div class="k">可用纸张</div><div class="v" id="cardMedia">—</div></div>
+    </div>
+    <div class="tray-list" id="cardTrays"></div>
+    <div class="supply-list" id="cardSupplies"></div>
+  </section>
+
+  <main class="card">
+    <section class="step">
+      <div class="step-head">
+        <span class="step-no">01</span>
+        <h2>选择文件</h2>
+        <span class="hint">支持 PDF / JPG / PNG，最大 200MB</span>
+      </div>
+      <div class="dropzone" id="dropzone" role="button" tabindex="0">
+        <input type="file" id="fileInput" accept=".pdf,.jpg,.jpeg,.png" hidden>
+        <div class="dz-icon">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5-5 5 5"/><path d="M12 5v12"/>
+          </svg>
+        </div>
+        <p class="dz-title">点击选择或拖拽文件到此处</p>
+        <p class="dz-sub">上传后将按 A4 纸张和所选单双面输出</p>
+      </div>
+      <div class="file-card" id="fileCard" hidden>
+        <div class="file-badge" id="fileBadge">PDF</div>
+        <div class="file-meta">
+          <div class="file-name" id="fileName"></div>
+          <div class="file-size" id="fileSize"></div>
+        </div>
+        <button class="remove-btn" id="removeFile" title="移除文件" aria-label="移除文件">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+            <path d="M18 6 6 18M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+    </section>
+
+    <section class="step">
+      <div class="step-head">
+        <span class="step-no">02</span>
+        <h2>打印设置</h2>
+      </div>
+      <div class="modes">
+        <label class="mode">
+          <input type="radio" name="colorMode" value="color" checked>
+          <span class="swatch color"></span>
+          <span class="mode-info"><strong>彩色打印</strong><small>使用 CMYK 彩色墨粉</small></span>
+          <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        </label>
+        <label class="mode">
+          <input type="radio" name="colorMode" value="monochrome">
+          <span class="swatch mono"></span>
+          <span class="mode-info"><strong>黑白打印</strong><small>仅使用黑色墨粉</small></span>
+          <span class="check"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+        </label>
+      </div>
+      <div class="options">
+        <div class="option">
+          <span class="option-label">份数</span>
+          <div class="stepper">
+            <button type="button" id="minus" aria-label="减少份数">−</button>
+            <input id="copies" type="number" min="1" max="99" value="1" inputmode="numeric" aria-label="打印份数">
+            <button type="button" id="plus" aria-label="增加份数">+</button>
+          </div>
+        </div>
+        <div class="option">
+          <span class="option-label">纸张</span>
+          <div class="segmented" id="paperGroup">
+            <button type="button" data-paper="a4" class="active">A4</button>
+            <button type="button" data-paper="a3">A3</button>
+          </div>
+        </div>
+        <div class="option">
+          <span class="option-label">面数</span>
+          <div class="segmented" id="sidesGroup">
+            <button type="button" data-sides="one-sided" class="active">单面</button>
+            <button type="button" data-sides="two-sided-long-edge">双面</button>
+          </div>
+        </div>
+        <div class="option">
+          <span class="option-label">缩放</span>
+          <div class="segmented" id="scalingGroup">
+            <button type="button" data-scaling="fit" class="active">适应纸张</button>
+            <button type="button" data-scaling="none">原始大小</button>
+          </div>
+        </div>
+      </div>
+      <p class="option-note" id="paperNote" hidden>A3 打印前请确认纸盘已装入 A3 纸张。</p>
+      <p class="option-note" id="scalingNote" hidden>原始大小不对 PDF 缩放，超出纸张的内容可能被裁切；图片仍会适配页面。</p>
+    </section>
+
+    <button class="print-btn" id="printBtn" disabled>
+      <span id="btnLabel">发送打印</span>
+      <span class="spinner" id="btnSpinner" hidden></span>
+    </button>
+
+    <div class="upload-progress" id="uploadProgress" hidden>
+      <div class="upload-head">
+        <span id="uploadText">正在上传文件…</span>
+        <span class="pct" id="uploadPercent"></span>
+      </div>
+      <div class="progress-track"><div class="progress-bar" id="uploadBar"></div></div>
+    </div>
+
+    <div class="result" id="result" hidden></div>
+  </main>
+
+  <footer>
+    <span>IPP 直连打印 · 局域网内部使用</span>
+  </footer>
+</div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+  const MAX_SIZE = 200 * 1024 * 1024;
+  const ALLOWED = ["pdf", "jpg", "jpeg", "png"];
+  const MEDIA_TEXT = {
+    "iso_a4_210x297mm": "A4",
+    "iso_a3_297x420mm": "A3",
+    "iso_a5_148x210mm": "A5",
+    "na_letter_8.5x11in": "Letter"
+  };
+  const SUPPLY_TEXT = {
+    "Black Toner": "黑色", "Cyan Toner": "青色",
+    "Magenta Toner": "品红", "Yellow Toner": "黄色"
+  };
+  const TRAY_NAME = {
+    "Tray 1": "纸盘 1", "Tray 2": "纸盘 2", "Tray 3": "纸盘 3", "Tray 4": "纸盘 4",
+    "Bypass Tray": "手送台", "Multi Bypass Tray": "手送台"
+  };
+  const SUPPLY_COLORS = {
+    "Black Toner": "#111827", "黑色碳粉": "#111827",
+    "Cyan Toner": "#06b6d4", "青色碳粉": "#06b6d4",
+    "Magenta Toner": "#ec4899", "品红色碳粉": "#ec4899",
+    "Yellow Toner": "#eab308", "黄色碳粉": "#eab308"
+  };
+
+  let currentFile = null;
+  let sides = "one-sided";
+  let paperSize = "a4";
+  let scaling = "fit";
+  let offlineTimer = null;
+
+  const extOf = (name) => name.includes(".") ? name.split(".").pop().toLowerCase() : "";
+  const fmtSize = (bytes) => {
+    if (bytes < 1024) return bytes + " B";
+    if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + " KB";
+    return (bytes / 1024 / 1024).toFixed(1) + " MB";
+  };
+
+  // ------------------------------------------------------------ 打印机状态
+  function setPill(kind, text) {
+    const pill = $("statusPill");
+    pill.className = "pill" + (kind ? " " + kind : "");
+    $("statusText").textContent = text;
+  }
+
+  function setCardState(kind, text) {
+    $("cardState").className = "status-badge" + (kind ? " " + kind : "");
+    $("cardStateText").textContent = text;
+  }
+
+  function renderSupplies(supplies) {
+    const list = (supplies || []).filter(s => s.level !== null && !/waste/i.test(s.name));
+    $("cardSupplies").innerHTML = list.map(s => {
+      const color = SUPPLY_COLORS[s.name] || "#94a3b8";
+      const name = SUPPLY_TEXT[s.name] || s.name.replace(" Toner", "").replace("碳粉", "");
+      const level = Math.max(0, Math.min(100, s.level));
+      return `<div class="supply">
+        <div class="supply-head"><span>${name}</span><b>${level}%</b></div>
+        <div class="supply-track"><div class="supply-fill" style="width:${level}%;background:${color}"></div></div>
+      </div>`;
+    }).join("");
+  }
+
+  function renderTrays(trays) {
+    const list = (trays || []).filter(t => t.name);
+    $("cardTrays").innerHTML = list.map(t => {
+      const name = TRAY_NAME[t.name] || t.name;
+      const meta = [t.paper, t.level != null ? `余量 ${t.level}%` : ""].filter(Boolean).join(" · ");
+      const kind = t.status === 0 ? "ok" : (t.status === 3 ? "warn" : "bad");
+      return `<div class="tray">
+        <div class="tray-main">
+          <span class="tray-name">${name}</span>
+          <span class="tray-meta">${meta || "—"}</span>
+        </div>
+        <span class="tray-state ${kind}">${t.statusText}</span>
+      </div>`;
+    }).join("");
+  }
+
+  function emptyTrayNames(data) {
+    return (data.trays || [])
+      .filter(t => t.status === 3)
+      .map(t => TRAY_NAME[t.name] || t.name);
+  }
+
+  function renderPrinterCard(data, kind, stateText) {
+    $("cardName").textContent = data.name || "RICOH M C2001";
+    setCardState(kind, stateText);
+    const reasons = (data.reasonsText || []).filter(t => t && t !== "无");
+    const empty = emptyTrayNames(data);
+    const reasonText = empty.length ? empty.join("、") + " 缺纸" : [...new Set(reasons)].join("、");
+    $("cardMessage").textContent =
+      [data.message, reasonText].filter(Boolean).join(" · ") || "—";
+    $("cardQueue").textContent = (data.queuedJobs || 0) + " 个任务";
+    const media = [...new Set((data.mediaReady || []).map(m => MEDIA_TEXT[m] || m))];
+    $("cardMedia").textContent = media.length ? media.join("、") : "未检测到";
+    renderTrays(data.trays);
+    renderSupplies(data.supplies);
+  }
+
+  async function loadStatus() {
+    const btn = $("refreshBtn");
+    btn.classList.add("spin");
+    try {
+      const res = await fetch("/api/status");
+      const data = await res.json();
+      if (!data.ok) throw new Error(data.error || "状态读取失败");
+      if (offlineTimer) { clearTimeout(offlineTimer); offlineTimer = null; }
+
+      let kind = "error";
+      let stateText = data.state === 5 ? "已停止" : "状态未知";
+      if (data.state === 3) { kind = "ok"; stateText = "就绪"; }
+      else if (data.state === 4) { kind = "busy"; stateText = "打印中"; }
+      setPill(kind, stateText);
+      renderPrinterCard(data, kind, stateText);
+
+      const reasons = (data.reasonsText || []).filter(t => t && t !== "无");
+      const empty = emptyTrayNames(data);
+      const alertBox = $("printerAlert");
+      const reasonText = empty.length ? empty.join("、") + " 缺纸" : [...new Set(reasons)].join("、");
+      const detail = [];
+      if (data.message) detail.push(data.message);
+      if (reasonText) detail.push("原因：" + reasonText);
+      if (data.queuedJobs) detail.push("队列中 " + data.queuedJobs + " 个任务");
+
+      if (data.state === 5) {
+        alertBox.hidden = false;
+        alertBox.className = "alert error";
+        $("alertTitle").textContent = "打印机已停止，任务可能不会立即输出";
+        $("alertDetail").textContent = detail.join(" · ") || "请检查打印机面板。";
+      } else if (reasons.length || empty.length) {
+        alertBox.hidden = false;
+        alertBox.className = "alert";
+        $("alertTitle").textContent = "打印机提示：" + reasonText;
+        $("alertDetail").textContent = empty.length
+          ? `请向${empty.join("、")}补充纸张。`
+          : (data.message || "请检查纸张和耗材。");
+      } else {
+        alertBox.hidden = true;
+      }
+    } catch (err) {
+      setPill("error", "离线");
+      setCardState("error", "离线");
+      $("cardMessage").textContent = err.message;
+      $("cardQueue").textContent = "—";
+      $("cardMedia").textContent = "—";
+      $("cardTrays").innerHTML = "";
+      $("printerAlert").hidden = false;
+      $("printerAlert").className = "alert error";
+      $("alertTitle").textContent = "无法连接打印机";
+      $("alertDetail").textContent = err.message + "（10 秒后自动重试）";
+      if (!offlineTimer) {
+        offlineTimer = setTimeout(() => { offlineTimer = null; loadStatus(); }, 10000);
+      }
+    } finally {
+      btn.classList.remove("spin");
+    }
+  }
+
+  // ------------------------------------------------------------ 文件选择
+  function acceptFile(file) {
+    if (!file) return;
+    const ext = extOf(file.name);
+    if (!ALLOWED.includes(ext)) {
+      showResult(false, "不支持的文件格式", "仅支持 PDF、JPG、PNG 文件。");
+      return;
+    }
+    if (file.size > MAX_SIZE) {
+      showResult(false, "文件过大", "请选择小于 200MB 的文件。");
+      return;
+    }
+    currentFile = file;
+    $("fileName").textContent = file.name;
+    $("fileSize").textContent = fmtSize(file.size);
+    const badge = $("fileBadge");
+    badge.textContent = ext === "pdf" ? "PDF" : ext.toUpperCase().replace("JPEG", "JPG");
+    badge.className = "file-badge" + (ext === "pdf" ? "" : " img");
+    $("fileCard").hidden = false;
+    $("dropzone").hidden = true;
+    $("printBtn").disabled = false;
+    $("result").hidden = true;
+  }
+
+  function clearFile() {
+    currentFile = null;
+    $("fileInput").value = "";
+    $("fileCard").hidden = true;
+    $("dropzone").hidden = false;
+    $("printBtn").disabled = true;
+  }
+
+  // ------------------------------------------------------------ 提交打印
+  function showResult(ok, title, body, jobId, totalPages) {
+    const box = $("result");
+    box.hidden = false;
+    box.className = "result " + (ok ? "success" : "failure");
+    if (ok) {
+      box.innerHTML = `
+        <div class="result-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>${title}</span>
+        </div>
+        <div class="result-body">
+          ${jobId ? `<span class="job-tag">任务 #${jobId}</span> ` : ""}${body}
+          ${jobId ? `
+          <div class="progress-block" id="jobProgress">
+            <div class="progress-track"><div class="progress-bar" id="jobBar"></div></div>
+            <div class="progress-meta">
+              <span id="jobState">任务已提交，等待打印机接收…</span>
+              <span class="pct" id="jobPercent"></span>
+            </div>
+          </div>` : ""}
+        </div>`;
+      const bar = $("jobBar");
+      if (bar) {
+        if (totalPages) $("jobPercent").textContent = "0%";
+        else bar.classList.add("indeterminate");
+      }
+    } else {
+      box.innerHTML = `
+        <div class="result-head">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M12 8v4"/><path d="M12 16h.01"/></svg>
+          <span>${title}</span>
+        </div>
+        <div class="result-body">${body}</div>`;
+    }
+    box.scrollIntoView({ behavior: "smooth", block: "nearest" });
+  }
+
+  const fmtElapsed = (sec) => {
+    if (sec < 60) return sec + " 秒";
+    const m = Math.floor(sec / 60);
+    const s = sec % 60;
+    return s ? `${m} 分 ${s} 秒` : `${m} 分`;
+  };
+
+  function setJobText(text) {
+    const el = $("jobState");
+    if (el) el.textContent = text;
+  }
+
+  // 更新进度条，返回任务是否已结束
+  function renderProgress(data) {
+    const bar = $("jobBar");
+    if (!bar) return false;
+    const finished = !!data.finished;
+    const failed = data.state === 7 || data.state === 8;
+    const percent = typeof data.percent === "number" ? data.percent : null;
+
+    if (finished) {
+      bar.classList.remove("indeterminate");
+      bar.classList.toggle("error", failed);
+      bar.classList.toggle("done", !failed);
+      bar.style.width = (percent != null ? percent : (failed ? 0 : 100)) + "%";
+      $("jobPercent").textContent = percent != null ? percent + "%" : (failed ? "" : "100%");
+    } else if (percent != null) {
+      bar.classList.remove("indeterminate", "error", "done");
+      bar.style.width = percent + "%";
+      $("jobPercent").textContent = percent + "%";
+    } else {
+      bar.classList.add("indeterminate");
+      bar.classList.remove("error", "done");
+      bar.style.width = "";
+      $("jobPercent").textContent = "";
+    }
+
+    const parts = [];
+    if (data.totalPages) {
+      const done = Math.min(data.completedPages || 0, data.totalPages);
+      parts.push(`${done} / ${data.totalPages} 页`);
+    } else if (data.completedPages) {
+      parts.push(`已打印 ${data.completedPages} 页`);
+    }
+    if (data.elapsed != null) parts.push("已用时 " + fmtElapsed(data.elapsed));
+
+    let label;
+    if (finished) label = data.state === 9 ? "打印完成" : (data.stateText || "任务已结束");
+    else label = data.stateText || "处理中";
+    setJobText(label + (parts.length ? " · " + parts.join(" · ") : ""));
+    return finished;
+  }
+
+  async function pollJob(jobId) {
+    if (!jobId) return;
+    let misses = 0;
+    // 每 2 秒查询一次，最多约 10 分钟
+    for (let i = 0; i < 300; i++) {
+      await new Promise(r => setTimeout(r, 2000));
+      try {
+        const res = await fetch("/api/jobs/" + jobId);
+        const data = await res.json();
+        if (!data.ok) {
+          if (++misses >= 3) setJobText("任务已提交，暂时无法查询进度");
+          continue;
+        }
+        misses = 0;
+        if (renderProgress(data)) {
+          loadStatus();
+          return;
+        }
+      } catch (_) {
+        if (++misses >= 3) setJobText("任务已提交，暂时无法查询进度（网络异常）");
+      }
+    }
+    setJobText("任务仍在处理中，请查看打印机面板。");
+  }
+
+  async function submitPrint() {
+    if (!currentFile) return;
+    const btn = $("printBtn");
+    const spinner = $("btnSpinner");
+    const label = $("btnLabel");
+    btn.disabled = true;
+    spinner.hidden = false;
+    label.textContent = "正在上传并提交…";
+
+    const form = new FormData();
+    form.append("file", currentFile);
+    form.append("colorMode", document.querySelector('input[name="colorMode"]:checked').value);
+    form.append("copies", $("copies").value);
+    form.append("sides", sides);
+    form.append("paperSize", paperSize);
+    form.append("scaling", scaling);
+
+    const upload = $("uploadProgress");
+    upload.hidden = false;
+    $("uploadBar").className = "progress-bar";
+    $("uploadBar").style.width = "0%";
+    $("uploadText").textContent = "正在上传文件…";
+    $("uploadPercent").textContent = "0%";
+
+    try {
+      const data = await new Promise((resolve, reject) => {
+        const xhr = new XMLHttpRequest();
+        xhr.open("POST", "/api/print");
+        xhr.timeout = 600000;
+        xhr.upload.addEventListener("progress", (e) => {
+          if (!e.lengthComputable) return;
+          const pct = Math.min(100, Math.round((e.loaded / e.total) * 100));
+          $("uploadBar").style.width = pct + "%";
+          $("uploadPercent").textContent = pct + "%";
+          $("uploadText").textContent =
+            pct >= 100 ? "上传完成，正在提交到打印机…" : "正在上传文件…";
+        });
+        xhr.addEventListener("load", () => {
+          let payload = null;
+          try { payload = JSON.parse(xhr.responseText); } catch (_) { /* 非 JSON 响应 */ }
+          if (payload) resolve(payload);
+          else reject(new Error("打印服务返回错误（HTTP " + xhr.status + "）"));
+        });
+        xhr.addEventListener("error", () => reject(new Error("网络错误，无法连接打印服务")));
+        xhr.addEventListener("timeout", () => reject(new Error("提交超时，请重试")));
+        xhr.send(form);
+      });
+
+      if (!data.ok) {
+        showResult(false, "打印提交失败", data.error || "未知错误");
+      } else {
+        const mode = data.colorMode === "monochrome" ? "黑白" : "彩色";
+        const sideText = data.sides === "one-sided" ? "单面" : "双面";
+        const paperText = (data.paperSize || "a4").toUpperCase();
+        const scaleText = data.scaling === "none" ? "原始大小" : "适应纸张";
+        showResult(
+          true,
+          "任务已提交到打印机",
+          `${data.jobName} · ${paperText} · ${mode} · ${sideText} · ${scaleText} · ${data.copies} 份`,
+          data.jobId,
+          data.totalPages
+        );
+        pollJob(data.jobId);
+        loadStatus();
+      }
+    } catch (err) {
+      showResult(false, "网络错误", err.message);
+    } finally {
+      upload.hidden = true;
+      btn.disabled = false;
+      spinner.hidden = true;
+      label.textContent = "发送打印";
+    }
+  }
+
+  // ------------------------------------------------------------ 事件绑定
+  const dropzone = $("dropzone");
+  dropzone.addEventListener("click", () => $("fileInput").click());
+  dropzone.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); $("fileInput").click(); }
+  });
+  ["dragenter", "dragover"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.add("drag"); })
+  );
+  ["dragleave", "drop"].forEach(evt =>
+    dropzone.addEventListener(evt, (e) => { e.preventDefault(); dropzone.classList.remove("drag"); })
+  );
+  dropzone.addEventListener("drop", (e) => {
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    acceptFile(file);
+  });
+  $("fileInput").addEventListener("change", (e) => acceptFile(e.target.files[0]));
+  $("removeFile").addEventListener("click", clearFile);
+  $("printBtn").addEventListener("click", submitPrint);
+  $("refreshBtn").addEventListener("click", loadStatus);
+
+  function bindSegmented(groupId, onChange) {
+    const group = $(groupId);
+    group.querySelectorAll("button").forEach(btn => {
+      btn.addEventListener("click", () => {
+        group.querySelectorAll("button").forEach(b => b.classList.remove("active"));
+        btn.classList.add("active");
+        onChange(btn.dataset);
+      });
+    });
+  }
+  bindSegmented("sidesGroup", d => { sides = d.sides; });
+  bindSegmented("paperGroup", d => {
+    paperSize = d.paper;
+    $("paperNote").hidden = paperSize !== "a3";
+  });
+  bindSegmented("scalingGroup", d => {
+    scaling = d.scaling;
+    $("scalingNote").hidden = scaling !== "none";
+  });
+
+  $("minus").addEventListener("click", () => {
+    const input = $("copies");
+    input.value = Math.max(1, (parseInt(input.value, 10) || 1) - 1);
+  });
+  $("plus").addEventListener("click", () => {
+    const input = $("copies");
+    input.value = Math.min(99, (parseInt(input.value, 10) || 1) + 1);
+  });
+  $("copies").addEventListener("change", () => {
+    const input = $("copies");
+    let v = parseInt(input.value, 10);
+    if (Number.isNaN(v)) v = 1;
+    input.value = Math.min(99, Math.max(1, v));
+  });
+
+  loadStatus();
+  setInterval(loadStatus, 30000);
+</script>
+</body>
+</html>
